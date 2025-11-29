@@ -3,7 +3,7 @@ from pydantic import BaseModel
 import math
 from fastapi.middleware.cors import CORSMiddleware
 
-# Catalyst Engine
+# Catalyst Engine (NEW IMPORT)
 from catalyst_impact import (
     CatalystInstance,
     compute_catalyst_score_for_parcel,
@@ -11,7 +11,7 @@ from catalyst_impact import (
 
 app = FastAPI()
 
-# Allow frontend
+# Allow frontend (unchanged behavior)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -19,7 +19,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# ------------- Catalyst List (kept simple for now) -----------------
+# ---------------- Catalyst Instances (NEW) ----------------
 CATALYSTS = [
     CatalystInstance(
         id="gm_ultium",
@@ -44,12 +44,13 @@ CATALYSTS = [
     ),
 ]
 
-
-# ---------------------- INPUT SCHEMA (original + lat/lng added) ----------------------
+# ---------------- INPUT SCHEMA (YOUR ORIGINAL MODEL + lat/lng added) ----------------
 class PropertyInput(BaseModel):
+    # NEW fields
     lat: float
     lng: float
 
+    # ORIGINAL fields preserved exactly
     price_anomaly: float
     replacement_delta: float
     historical_delta: float
@@ -84,20 +85,19 @@ class PropertyInput(BaseModel):
     epa: float
 
 
-# ---------------------- SCORING ENGINE ----------------------
+# ---------------- SCORING ENGINE (YOUR ORIGINAL MATH + catalyst decay added) ----------------
 @app.post("/score")
 def score_property(p: PropertyInput):
 
-    # ------------------------- NEW: Catalyst Distance Impact -------------------------
-    catalyst_impact_score = compute_catalyst_score_for_parcel(
+    # NEW: Catalyst distance-decay impact
+    catalyst_decay_impact = compute_catalyst_score_for_parcel(
         parcel_lat=p.lat,
         parcel_lng=p.lng,
         catalysts=CATALYSTS,
     )
-    # -------------------------------------------------------------------------------
 
+    # ---------------- ORIGINAL MODEL (UNCHANGED) ----------------
 
-    # ------------------------- ORIGINAL MODEL (UNCHANGED) --------------------------
     value_anomaly = (
         0.50 * p.price_anomaly +
         0.30 * p.replacement_delta +
@@ -114,13 +114,7 @@ def score_property(p: PropertyInput):
         0.02 * p.media_tone
     )
 
-    # original catalyst_adj (kept)
     catalyst_adj = catalyst_base * (1 + p.recency_multiplier)
-
-    # NEW: blended catalyst score → your proprietary engine influences the old one
-    # (you can change blend weights later)
-    catalyst_total = (0.5 * catalyst_adj) + (0.5 * catalyst_impact_score)
-
 
     asset_upside = (
         0.45 * p.zoning_flex +
@@ -150,10 +144,10 @@ def score_property(p: PropertyInput):
         0.10 * p.epa
     )
 
-    # ------------------------- FINAL POI (original weights kept) -------------------------
+    # ---------------- ORIGINAL FINAL POI FORMULA (UNCHANGED) ----------------
     poi_raw = (
         0.25 * value_anomaly +
-        0.20 * catalyst_total +   # <-- now includes your decay engine
+        0.20 * catalyst_adj +   # ← unchanged
         0.15 * asset_upside +
         0.15 * market_momentum +
         0.10 * incentive_score -
@@ -162,7 +156,7 @@ def score_property(p: PropertyInput):
 
     poi = round(100 * poi_raw)
 
-    # Tier Logic (unchanged)
+    # ORIGINAL tier logic
     if poi >= 75:
         tier = "Gold"
     elif poi >= 50:
@@ -170,21 +164,15 @@ def score_property(p: PropertyInput):
     else:
         tier = "Bronze"
 
-    # ---------------------- RETURN (kept all original outputs) ----------------------
+    # ---------------- RETURN (All original fields + NEW catalyst_decay_impact) ----------------
     return {
         "poi": poi,
         "tier": tier,
         "value_anomaly": value_anomaly,
-
-        # original catalyst variable (kept)
-        "catalyst_adj": catalyst_adj,
-
-        # NEW: your proprietary influence
-        "catalyst_decay_impact": catalyst_impact_score,
-        "catalyst_total": catalyst_total,
-
+        "catalyst_adj": catalyst_adj,             # ← original score
+        "catalyst_decay_impact": catalyst_decay_impact,  # ← added, does NOT affect POI
         "asset_upside": asset_upside,
         "market_momentum": market_momentum,
         "incentive_score": incentive_score,
-        "risk_penalty": risk_penalty,
+        "risk_penalty": risk_penalty
     }
