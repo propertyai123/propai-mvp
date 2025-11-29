@@ -8,6 +8,8 @@ from catalyst_impact import (
     CatalystInstance,
     compute_catalyst_score_for_parcel,
 )
+import os
+from supabase import create_client
 
 app = FastAPI()
 
