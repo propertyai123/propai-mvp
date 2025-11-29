@@ -23,10 +23,12 @@ supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 # Allow frontend
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_methods=["*"],
+    allow_origins=["*"],  # or list specific frontend domains
+    allow_credentials=False,
+    allow_methods=["GET", "POST", "OPTIONS"],
     allow_headers=["*"],
 )
+
 
 
 # ---------------- CATALYST LOADER ----------------
