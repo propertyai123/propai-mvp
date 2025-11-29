@@ -1,6 +1,10 @@
 from fastapi import FastAPI
 from pydantic import BaseModel
 import math
+from catalyst_impact import (
+    CatalystInstance,
+    compute_catalyst_score_for_parcel,
+)
 
 app = FastAPI()
 
