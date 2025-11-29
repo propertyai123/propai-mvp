@@ -5,6 +5,30 @@ from catalyst_impact import (
     CatalystInstance,
     compute_catalyst_score_for_parcel,
 )
+# TEMP: Catalyst list (later loaded from DB)
+CATALYSTS = [
+    CatalystInstance(
+        id="gm_ultium",
+        type_id="ev_gigafactory",
+        name="GM Ultium Lansing",
+        lat=42.708,
+        lng=-84.668,
+    ),
+    CatalystInstance(
+        id="honda_ev_oh",
+        type_id="auto_tier1",
+        name="Honda EV Ohio",
+        lat=40.236,
+        lng=-83.367,
+    ),
+    CatalystInstance(
+        id="panasonic_ks",
+        type_id="ev_gigafactory",
+        name="Panasonic Kansas",
+        lat=38.964,
+        lng=-94.97,
+    ),
+]
 
 app = FastAPI()
 
