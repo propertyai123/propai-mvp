@@ -3,10 +3,10 @@ name: Import Catalysts
 on:
   schedule:
     - cron: "0 6 * * *"   # Runs every day at 6:00 UTC (1 AM EST)
-  workflow_dispatch:       # Allows manual runs
+  workflow_dispatch:       # Allows manual runs from GitHub Actions tab
   push:
     branches:
-      - main
+      - main               # Optional: run when main is updated
 
 jobs:
   run-importer:
@@ -23,7 +23,6 @@ jobs:
 
     - name: Install dependencies
       run: |
-        cd backend
         pip install -r requirements.txt
 
     - name: Run import_catalysts.py
@@ -31,5 +30,4 @@ jobs:
         SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
         SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
       run: |
-        cd backend
         python import_catalysts.py
