@@ -1,24 +1,26 @@
 from fastapi import FastAPI
 from pydantic import BaseModel
-import math
 from fastapi.middleware.cors import CORSMiddleware
+import math
+import os
 
-# Catalyst Engine (NEW IMPORT)
+# Catalyst Engine
 from catalyst_impact import (
     CatalystInstance,
     compute_catalyst_score_for_parcel,
 )
-import os
+
+# Supabase Client
 from supabase import create_client
 
 app = FastAPI()
+
 # ---------------- SUPABASE CONNECTION ----------------
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY")
-
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-# Allow frontend (unchanged behavior)
+# Allow frontend
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -26,38 +28,54 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# ---------------- Catalyst Instances (NEW) ----------------
-CATALYSTS = [
-    CatalystInstance(
-        id="gm_ultium",
-        type_id="ev_gigafactory",
-        name="GM Ultium Lansing",
-        lat=42.708,
-        lng=-84.668,
-    ),
-    CatalystInstance(
-        id="honda_ev_oh",
-        type_id="auto_tier1",
-        name="Honda EV Ohio",
-        lat=40.236,
-        lng=-83.367,
-    ),
-    CatalystInstance(
-        id="panasonic_ks",
-        type_id="ev_gigafactory",
-        name="Panasonic Kansas",
-        lat=38.964,
-        lng=-94.97,
-    ),
-]
 
-# ---------------- INPUT SCHEMA (YOUR ORIGINAL MODEL + lat/lng added) ----------------
+# ---------------- CATALYST LOADER ----------------
+def load_catalysts_from_supabase():
+    response = supabase.table("catalysts").select("*").execute()
+    rows = response.data
+    catalysts = []
+
+    for row in rows:
+        radius = float(row.get("radius_miles") or 10)
+
+        r_peak = radius
+        r_max = radius * 2.5
+        decay_k = max(1.0, radius / 3)
+
+        capex = row.get("capex_usd") or 0
+        jobs = row.get("jobs_estimated") or 0
+
+        if capex > 0:
+            base_strength = max(0.5, math.log10(capex))
+        elif jobs > 0:
+            base_strength = max(0.5, jobs / 500)
+        else:
+            base_strength = 1.0
+
+        catalysts.append(CatalystInstance(
+            id=row["id"],
+            type_id=row["type"],
+            name=row["name"],
+            lat=row["lat"],
+            lng=row["lng"],
+            r_peak_miles=r_peak,
+            r_max_miles=r_max,
+            decay_k_miles=decay_k,
+            base_strength=base_strength,
+        ))
+
+    return catalysts
+
+
+# Load once at startup
+CATALYSTS = load_catalysts_from_supabase()
+
+
+# ---------------- INPUT SCHEMA ----------------
 class PropertyInput(BaseModel):
-    # NEW fields
     lat: float
     lng: float
 
-    # ORIGINAL fields preserved exactly
     price_anomaly: float
     replacement_delta: float
     historical_delta: float
@@ -92,18 +110,15 @@ class PropertyInput(BaseModel):
     epa: float
 
 
-# ---------------- SCORING ENGINE (YOUR ORIGINAL MATH + catalyst decay added) ----------------
+# ---------------- SCORING ENGINE ----------------
 @app.post("/score")
 def score_property(p: PropertyInput):
 
-    # NEW: Catalyst distance-decay impact
     catalyst_decay_impact = compute_catalyst_score_for_parcel(
         parcel_lat=p.lat,
         parcel_lng=p.lng,
         catalysts=CATALYSTS,
     )
-
-    # ---------------- ORIGINAL MODEL (UNCHANGED) ----------------
 
     value_anomaly = (
         0.50 * p.price_anomaly +
@@ -151,10 +166,9 @@ def score_property(p: PropertyInput):
         0.10 * p.epa
     )
 
-    # ---------------- ORIGINAL FINAL POI FORMULA (UNCHANGED) ----------------
     poi_raw = (
         0.25 * value_anomaly +
-        0.20 * catalyst_adj +   # ← unchanged
+        0.20 * catalyst_adj +
         0.15 * asset_upside +
         0.15 * market_momentum +
         0.10 * incentive_score -
@@ -163,7 +177,6 @@ def score_property(p: PropertyInput):
 
     poi = round(100 * poi_raw)
 
-    # ORIGINAL tier logic
     if poi >= 75:
         tier = "Gold"
     elif poi >= 50:
@@ -171,15 +184,14 @@ def score_property(p: PropertyInput):
     else:
         tier = "Bronze"
 
-    # ---------------- RETURN (All original fields + NEW catalyst_decay_impact) ----------------
     return {
         "poi": poi,
         "tier": tier,
         "value_anomaly": value_anomaly,
-        "catalyst_adj": catalyst_adj,             # ← original score
-        "catalyst_decay_impact": catalyst_decay_impact,  # ← added, does NOT affect POI
+        "catalyst_adj": catalyst_adj,
+        "catalyst_decay_impact": catalyst_decay_impact,
         "asset_upside": asset_upside,
         "market_momentum": market_momentum,
         "incentive_score": incentive_score,
-        "risk_penalty": risk_penalty
+        "risk_penalty": risk_penalty,
     }
