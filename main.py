@@ -1,11 +1,25 @@
 from fastapi import FastAPI
 from pydantic import BaseModel
 import math
+from fastapi.middleware.cors import CORSMiddleware
+
+# Catalyst Engine
 from catalyst_impact import (
     CatalystInstance,
     compute_catalyst_score_for_parcel,
 )
-# TEMP: Catalyst list (later loaded from DB)
+
+app = FastAPI()
+
+# Allow frontend
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# ------------- Catalyst List (kept simple for now) -----------------
 CATALYSTS = [
     CatalystInstance(
         id="gm_ultium",
@@ -30,10 +44,12 @@ CATALYSTS = [
     ),
 ]
 
-app = FastAPI()
 
-# ---- INPUT SCHEMA ----
+# ---------------------- INPUT SCHEMA (original + lat/lng added) ----------------------
 class PropertyInput(BaseModel):
+    lat: float
+    lng: float
+
     price_anomaly: float
     replacement_delta: float
     historical_delta: float
@@ -68,11 +84,20 @@ class PropertyInput(BaseModel):
     epa: float
 
 
-# ---- ROUTE ----
+# ---------------------- SCORING ENGINE ----------------------
 @app.post("/score")
 def score_property(p: PropertyInput):
 
-    # Value Anomaly
+    # ------------------------- NEW: Catalyst Distance Impact -------------------------
+    catalyst_impact_score = compute_catalyst_score_for_parcel(
+        parcel_lat=p.lat,
+        parcel_lng=p.lng,
+        catalysts=CATALYSTS,
+    )
+    # -------------------------------------------------------------------------------
+
+
+    # ------------------------- ORIGINAL MODEL (UNCHANGED) --------------------------
     value_anomaly = (
         0.50 * p.price_anomaly +
         0.30 * p.replacement_delta +
@@ -80,7 +105,6 @@ def score_property(p: PropertyInput):
         0.05 * p.dom_score
     )
 
-    # Catalyst Base
     catalyst_base = (
         0.40 * p.distance_score +
         0.25 * p.capex_score +
@@ -90,16 +114,20 @@ def score_property(p: PropertyInput):
         0.02 * p.media_tone
     )
 
+    # original catalyst_adj (kept)
     catalyst_adj = catalyst_base * (1 + p.recency_multiplier)
 
-    # Asset Upside
+    # NEW: blended catalyst score → your proprietary engine influences the old one
+    # (you can change blend weights later)
+    catalyst_total = (0.5 * catalyst_adj) + (0.5 * catalyst_impact_score)
+
+
     asset_upside = (
         0.45 * p.zoning_flex +
         0.35 * p.utilities +
         0.20 * p.topo_index
     )
 
-    # Market Momentum
     market_momentum = (
         0.30 * p.job_growth +
         0.25 * p.permits +
@@ -109,14 +137,12 @@ def score_property(p: PropertyInput):
         0.05 * p.inst_cluster
     )
 
-    # Incentives
     incentive_score = (
         0.45 * p.oz +
         0.30 * p.hub +
         0.25 * p.tif
     )
 
-    # Risk
     risk_penalty = (
         0.40 * p.crime +
         0.35 * p.flood +
@@ -124,10 +150,10 @@ def score_property(p: PropertyInput):
         0.10 * p.epa
     )
 
-    # Final POI
+    # ------------------------- FINAL POI (original weights kept) -------------------------
     poi_raw = (
         0.25 * value_anomaly +
-        0.20 * catalyst_adj +
+        0.20 * catalyst_total +   # <-- now includes your decay engine
         0.15 * asset_upside +
         0.15 * market_momentum +
         0.10 * incentive_score -
@@ -136,7 +162,7 @@ def score_property(p: PropertyInput):
 
     poi = round(100 * poi_raw)
 
-    # TIER
+    # Tier Logic (unchanged)
     if poi >= 75:
         tier = "Gold"
     elif poi >= 50:
@@ -144,13 +170,21 @@ def score_property(p: PropertyInput):
     else:
         tier = "Bronze"
 
+    # ---------------------- RETURN (kept all original outputs) ----------------------
     return {
         "poi": poi,
         "tier": tier,
         "value_anomaly": value_anomaly,
+
+        # original catalyst variable (kept)
         "catalyst_adj": catalyst_adj,
+
+        # NEW: your proprietary influence
+        "catalyst_decay_impact": catalyst_impact_score,
+        "catalyst_total": catalyst_total,
+
         "asset_upside": asset_upside,
         "market_momentum": market_momentum,
         "incentive_score": incentive_score,
-        "risk_penalty": risk_penalty
+        "risk_penalty": risk_penalty,
     }
