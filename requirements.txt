@@ -1,4 +1,5 @@
 fastapi
-uvicorn
 pydantic
-supabase==2.5.1
+uvicorn
+supabase
+requests
