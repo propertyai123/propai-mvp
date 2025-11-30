@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
 
 jobs:
-  import:
+  run-import:
     runs-on: ubuntu-latest
 
     steps:
@@ -14,17 +14,17 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
-          python-version: '3.12'
+          python-version: "3.12"
 
       - name: Install dependencies
         run: |
-          cd $GITHUB_WORKSPACE
+          cd propai-mvp
           pip install -r requirements.txt
 
-      - name: Run import script
+      - name: Run importer
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
         run: |
-          cd $GITHUB_WORKSPACE
+          cd propai-mvp
           python import_catalysts.py
