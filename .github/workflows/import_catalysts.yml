@@ -7,10 +7,6 @@ jobs:
   run-import:
     runs-on: ubuntu-latest
 
-    defaults:
-      run:
-        working-directory: propai-mvp
-
     steps:
       - name: Checkout repo
         uses: actions/checkout@v3
