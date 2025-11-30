@@ -3,3 +3,4 @@ pydantic
 uvicorn
 supabase
 requests
+python-dotenv
